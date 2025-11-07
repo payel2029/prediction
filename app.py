@@ -7,6 +7,13 @@ app = Flask(__name__)
 # Load the trained XGBoost pipeline
 model = joblib.load("xgboost_pipeline.pkl")
 
+# Expected feature order
+FEATURES = [
+    'Age', 'Systolic BP', 'Diastolic', 'BS', 'Body Temp', 'BMI',
+    'Previous Complications', 'Preexisting Diabetes',
+    'Gestational Diabetes', 'Mental Health', 'Heart Rate'
+]
+
 @app.route('/')
 def home():
     return "Maternal Health Prediction API is running!"
@@ -16,8 +23,11 @@ def predict():
     try:
         data = request.get_json()
 
-        # Convert JSON to DataFrame (expect keys match your features)
+        # Convert to DataFrame
         input_df = pd.DataFrame([data])
+
+        # Reorder columns to match training data
+        input_df = input_df.reindex(columns=FEATURES)
 
         # Make prediction
         prediction = model.predict(input_df)[0]
@@ -26,6 +36,7 @@ def predict():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
 
 if __name__ == '__main__':
     app.run(debug=True)
