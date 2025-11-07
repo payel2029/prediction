@@ -28,9 +28,9 @@ except Exception as e:
 
 # Expected feature order
 FEATURES = [
-    'Age', 'Systolic BP', 'Diastolic', 'BS', 'Body Temp', 'BMI',
+    'Age', 'SystolicBP', 'DiastolicBP', 'BS', 'BodyTemp', 'BMI',
     'Previous Complications', 'Preexisting Diabetes',
-    'Gestational Diabetes', 'Mental Health', 'Heart Rate'
+    'Gestational Diabetes', 'Mental Health', 'HeartRate'
 ]
 
 @app.route('/')
@@ -187,3 +187,4 @@ def test_specific():
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
+
