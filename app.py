@@ -19,19 +19,22 @@ try:
     # Check if model has feature names
     if hasattr(model, 'feature_names_in_'):
         logger.info(f"Model expects features: {model.feature_names_in_.tolist()}")
+        # Use the actual feature names from the model
+        FEATURES = model.feature_names_in_.tolist()
+    else:
+        # Fallback to expected features
+        FEATURES = [
+            'Age', 'SystolicBP', 'DiastolicBP', 'BS', 'BodyTemp', 'BMI',
+            'Previous Complications', 'Preexisting Diabetes',
+            'Gestational Diabetes', 'Mental Health', 'HeartRate'
+        ]
+        
     if hasattr(model, 'classes_'):
         logger.info(f"Model classes: {model.classes_}")
         
 except Exception as e:
     logger.error(f"Error loading model: {e}")
     model = None
-
-# Expected feature order
-FEATURES = [
-    'Age', 'SystolicBP', 'DiastolicBP', 'BS', 'BodyTemp', 'BMI',
-    'Previous Complications', 'Preexisting Diabetes',
-    'Gestational Diabetes', 'Mental Health', 'HeartRate'
-]
 
 @app.route('/')
 def home():
@@ -47,13 +50,29 @@ def debug_predict():
         data = request.get_json()
         logger.info(f"📊 DEBUG - Received data: {data}")
 
-        # Convert to DataFrame and ensure correct data types
-        input_df = pd.DataFrame([data])
+        # Map incoming feature names to expected names
+        feature_mapping = {
+            'Systolic BP': 'SystolicBP',
+            'Diastolic': 'DiastolicBP',
+            'Body Temp': 'BodyTemp', 
+            'Heart Rate': 'HeartRate'
+        }
+        
+        # Create corrected data with proper feature names
+        corrected_data = {}
+        for key, value in data.items():
+            corrected_key = feature_mapping.get(key, key)
+            corrected_data[corrected_key] = value
+
+        # Convert to DataFrame
+        input_df = pd.DataFrame([corrected_data])
+        
+        # Ensure correct data types with PROPER feature names
         input_df = input_df.astype({
-            'Age': float, 'Systolic BP': float, 'Diastolic': float, 
-            'BS': float, 'Body Temp': float, 'BMI': float,
+            'Age': float, 'SystolicBP': float, 'DiastolicBP': float, 
+            'BS': float, 'BodyTemp': float, 'BMI': float,
             'Previous Complications': int, 'Preexisting Diabetes': int,
-            'Gestational Diabetes': int, 'Mental Health': int, 'Heart Rate': float
+            'Gestational Diabetes': int, 'Mental Health': int, 'HeartRate': float
         })
 
         # Reorder columns to match training data
@@ -105,13 +124,29 @@ def predict():
     try:
         data = request.get_json()
 
-        # Convert to DataFrame and ensure correct data types
-        input_df = pd.DataFrame([data])
+        # Map incoming feature names to expected names
+        feature_mapping = {
+            'Systolic BP': 'SystolicBP',
+            'Diastolic': 'DiastolicBP',
+            'Body Temp': 'BodyTemp',
+            'Heart Rate': 'HeartRate'
+        }
+        
+        # Create corrected data with proper feature names
+        corrected_data = {}
+        for key, value in data.items():
+            corrected_key = feature_mapping.get(key, key)
+            corrected_data[corrected_key] = value
+
+        # Convert to DataFrame
+        input_df = pd.DataFrame([corrected_data])
+        
+        # Ensure correct data types with PROPER feature names
         input_df = input_df.astype({
-            'Age': float, 'Systolic BP': float, 'Diastolic': float, 
-            'BS': float, 'Body Temp': float, 'BMI': float,
+            'Age': float, 'SystolicBP': float, 'DiastolicBP': float, 
+            'BS': float, 'BodyTemp': float, 'BMI': float,
             'Previous Complications': int, 'Preexisting Diabetes': int,
-            'Gestational Diabetes': int, 'Mental Health': int, 'Heart Rate': float
+            'Gestational Diabetes': int, 'Mental Health': int, 'HeartRate': float
         })
 
         # Reorder columns to match training data
@@ -142,19 +177,19 @@ def test_specific():
         return jsonify({"error": "Model not loaded"}), 500
     
     try:
-        # Your specific test case that should be low risk
+        # Your specific test case with CORRECT feature names
         test_case = {
             'Age': 22.0, 
-            'Systolic BP': 110.0, 
-            'Diastolic': 70.0, 
+            'SystolicBP': 110.0,  # ← Fixed
+            'DiastolicBP': 70.0,  # ← Fixed
             'BS': 7.1, 
-            'Body Temp': 98.0, 
+            'BodyTemp': 98.0,     # ← Fixed
             'BMI': 20.4,
             'Previous Complications': 0, 
             'Preexisting Diabetes': 0,
             'Gestational Diabetes': 0, 
             'Mental Health': 0, 
-            'Heart Rate': 74.0
+            'HeartRate': 74.0     # ← Fixed
         }
         
         input_df = pd.DataFrame([test_case])
@@ -187,4 +222,3 @@ def test_specific():
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
-
