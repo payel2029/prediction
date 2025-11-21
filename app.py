@@ -1,224 +1,58 @@
-from flask import Flask, request, jsonify
 import pandas as pd
 import joblib
-import numpy as np
-import logging
 
-# Set up logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
+# Load your trained pipeline
+pipeline = joblib.load("xgboost_pipeline.pkl")  # or maternal_pipeline.pkl
 
-app = Flask(__name__)
+def predict_maternal_risk(age, systolic_bp, diastolic, bs, body_temp, bmi,
+                          previous_complications, preexisting_diabetes,
+                          gestational_diabetes, mental_health, heart_rate):
+    """
+    Takes user-friendly clinical inputs and returns predicted risk class and probabilities.
+    """
+    # Create DataFrame from user input
+    df_input = pd.DataFrame([{
+        'Age': age,
+        'Systolic BP': systolic_bp,
+        'Diastolic': diastolic,
+        'BS': bs,
+        'Body Temp': body_temp,
+        'BMI': bmi,
+        'Previous Complications': previous_complications,
+        'Preexisting Diabetes': preexisting_diabetes,
+        'Gestational Diabetes': gestational_diabetes,
+        'Mental Health': mental_health,
+        'Heart Rate': heart_rate
+    }])
 
-# Load the trained XGBoost pipeline
-try:
-    model = joblib.load("xgboost_pipeline.pkl")
-    logger.info("Model loaded successfully")
-    logger.info(f"Model type: {type(model)}")
-    
-    # Check if model has feature names
-    if hasattr(model, 'feature_names_in_'):
-        logger.info(f"Model expects features: {model.feature_names_in_.tolist()}")
-        # Use the actual feature names from the model
-        FEATURES = model.feature_names_in_.tolist()
-    else:
-        # Fallback to expected features
-        FEATURES = [
-            'Age', 'SystolicBP', 'DiastolicBP', 'BS', 'BodyTemp', 'BMI',
-            'Previous Complications', 'Preexisting Diabetes',
-            'Gestational Diabetes', 'Mental Health', 'HeartRate'
-        ]
-        
-    if hasattr(model, 'classes_'):
-        logger.info(f"Model classes: {model.classes_}")
-        
-except Exception as e:
-    logger.error(f"Error loading model: {e}")
-    model = None
+    # Predict class
+    predicted_class = pipeline.predict(df_input)[0]
 
-@app.route('/')
-def home():
-    return "Maternal Health Prediction API is running!"
+    # Predict probabilities
+    probabilities = pipeline.predict_proba(df_input)[0]
 
-@app.route('/debug_predict', methods=['POST'])
-def debug_predict():
-    """Debug endpoint to see what's happening inside the model"""
-    if model is None:
-        return jsonify({"error": "Model not loaded"}), 500
-        
-    try:
-        data = request.get_json()
-        logger.info(f"📊 DEBUG - Received data: {data}")
+    # Map numeric class to human-readable risk
+    class_mapping = {0: 'Low', 1: 'Mid', 2: 'High'}
+    predicted_risk = class_mapping.get(predicted_class, "Unknown")
 
-        # Map incoming feature names to expected names
-        feature_mapping = {
-            'Systolic BP': 'SystolicBP',
-            'Diastolic': 'DiastolicBP',
-            'Body Temp': 'BodyTemp', 
-            'Heart Rate': 'HeartRate'
-        }
-        
-        # Create corrected data with proper feature names
-        corrected_data = {}
-        for key, value in data.items():
-            corrected_key = feature_mapping.get(key, key)
-            corrected_data[corrected_key] = value
+    return predicted_risk, probabilities
 
-        # Convert to DataFrame
-        input_df = pd.DataFrame([corrected_data])
-        
-        # Ensure correct data types with PROPER feature names
-        input_df = input_df.astype({
-            'Age': float, 'SystolicBP': float, 'DiastolicBP': float, 
-            'BS': float, 'BodyTemp': float, 'BMI': float,
-            'Previous Complications': int, 'Preexisting Diabetes': int,
-            'Gestational Diabetes': int, 'Mental Health': int, 'HeartRate': float
-        })
+# ============================
+# Example usage:
+# ============================
+pred_risk, probs = predict_maternal_risk(
+    age=48,
+    systolic_bp=120,
+    diastolic=80,
+    bs=11,
+    body_temp=98,
+    bmi=29,
+    previous_complications=1,
+    preexisting_diabetes=1,
+    gestational_diabetes=0,
+    mental_health=1,
+    heart_rate=0
+)
 
-        # Reorder columns to match training data
-        input_df = input_df.reindex(columns=FEATURES)
-        
-        logger.info(f"📊 DEBUG - Processed DataFrame:")
-        logger.info(f"Columns: {input_df.columns.tolist()}")
-        logger.info(f"Data types: {input_df.dtypes.to_dict()}")
-        logger.info(f"Values: {input_df.values.tolist()}")
-
-        # Get raw prediction
-        prediction = model.predict(input_df)[0]
-        
-        # Get probabilities if available
-        probabilities = None
-        if hasattr(model, 'predict_proba'):
-            probabilities = model.predict_proba(input_df)[0]
-            logger.info(f"📊 DEBUG - Prediction probabilities: {probabilities}")
-        
-        # Try to get feature importance if available
-        feature_importance = None
-        if hasattr(model, 'feature_importances_'):
-            feature_importance = dict(zip(FEATURES, model.feature_importances_))
-            logger.info(f"📊 DEBUG - Feature importance: {feature_importance}")
-
-        logger.info(f"📊 DEBUG - Final prediction: {prediction}")
-
-        return jsonify({
-            "risk_level": str(prediction),
-            "probabilities": probabilities.tolist() if probabilities is not None else None,
-            "feature_importance": feature_importance,
-            "processed_data": input_df.iloc[0].to_dict(),
-            "debug_info": {
-                "model_type": str(type(model)),
-                "features_received": list(data.keys()),
-                "features_processed": FEATURES
-            }
-        })
-
-    except Exception as e:
-        logger.error(f"📊 DEBUG - Prediction error: {e}")
-        return jsonify({"error": str(e)}), 400
-
-@app.route('/predict', methods=['POST'])
-def predict():
-    if model is None:
-        return jsonify({"error": "Model not loaded"}), 500
-        
-    try:
-        data = request.get_json()
-
-        # Map incoming feature names to expected names
-        feature_mapping = {
-            'Systolic BP': 'SystolicBP',
-            'Diastolic': 'DiastolicBP',
-            'Body Temp': 'BodyTemp',
-            'Heart Rate': 'HeartRate'
-        }
-        
-        # Create corrected data with proper feature names
-        corrected_data = {}
-        for key, value in data.items():
-            corrected_key = feature_mapping.get(key, key)
-            corrected_data[corrected_key] = value
-
-        # Convert to DataFrame
-        input_df = pd.DataFrame([corrected_data])
-        
-        # Ensure correct data types with PROPER feature names
-        input_df = input_df.astype({
-            'Age': float, 'SystolicBP': float, 'DiastolicBP': float, 
-            'BS': float, 'BodyTemp': float, 'BMI': float,
-            'Previous Complications': int, 'Preexisting Diabetes': int,
-            'Gestational Diabetes': int, 'Mental Health': int, 'HeartRate': float
-        })
-
-        # Reorder columns to match training data
-        input_df = input_df.reindex(columns=FEATURES)
-
-        # Make prediction
-        prediction = model.predict(input_df)[0]
-        
-        # Get probabilities if available
-        if hasattr(model, 'predict_proba'):
-            probabilities = model.predict_proba(input_df)[0]
-        else:
-            probabilities = None
-
-        return jsonify({
-            "risk_level": str(prediction),
-            "probabilities": probabilities.tolist() if probabilities is not None else None
-        })
-
-    except Exception as e:
-        logger.error(f"Prediction error: {e}")
-        return jsonify({"error": str(e)}), 400
-
-@app.route('/test_specific', methods=['POST'])
-def test_specific():
-    """Test specific case that should be low risk"""
-    if model is None:
-        return jsonify({"error": "Model not loaded"}), 500
-    
-    try:
-        # Your specific test case with CORRECT feature names
-        test_case = {
-            'Age': 22.0, 
-            'SystolicBP': 110.0,  # ← Fixed
-            'DiastolicBP': 70.0,  # ← Fixed
-            'BS': 7.1, 
-            'BodyTemp': 98.0,     # ← Fixed
-            'BMI': 20.4,
-            'Previous Complications': 0, 
-            'Preexisting Diabetes': 0,
-            'Gestational Diabetes': 0, 
-            'Mental Health': 0, 
-            'HeartRate': 74.0     # ← Fixed
-        }
-        
-        input_df = pd.DataFrame([test_case])
-        input_df = input_df.reindex(columns=FEATURES)
-        
-        logger.info(f"🔍 SPECIFIC TEST - Input data: {test_case}")
-        logger.info(f"🔍 SPECIFIC TEST - Processed data: {input_df.values.tolist()}")
-        
-        prediction = model.predict(input_df)[0]
-        
-        if hasattr(model, 'predict_proba'):
-            probabilities = model.predict_proba(input_df)[0]
-            logger.info(f"🔍 SPECIFIC TEST - Probabilities: {probabilities}")
-        else:
-            probabilities = None
-            
-        logger.info(f"🔍 SPECIFIC TEST - Prediction: {prediction}")
-        
-        return jsonify({
-            "test_case": "Age=22, BP=110/70, BS=7.1, BMI=20.4 (Should be Low Risk)",
-            "prediction": int(prediction),
-            "probabilities": probabilities.tolist() if probabilities is not None else None,
-            "expected": "Low Risk (0)",
-            "actual": f"{'✅ MATCH' if prediction == 0 else '❌ MISMATCH'}"
-        })
-        
-    except Exception as e:
-        logger.error(f"Specific test error: {e}")
-        return jsonify({"error": str(e)}), 400
-
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+print("Predicted Risk:", pred_risk)
+print("Class Probabilities:", probs)
